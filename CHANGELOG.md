@@ -1,5 +1,11 @@
 # @moonwell-fi/ayaos
 
+## 0.0.2
+
+### Patch Changes
+
+- ed0f47c: Fix the Neynar model import so the published ESM bundle loads correctly in Node.js and Vitest consumers.
+
 ## 0.0.1
 
 ### Patch Changes
