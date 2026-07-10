@@ -7,7 +7,7 @@ import type { Cast, CastId, FidRequest, Profile } from '@/plugins/farcaster/comm
 import { neynarCastToCast, splitPostContent } from '@/plugins/farcaster/common/utils'
 import { Content } from '@elizaos/core'
 import { type NeynarAPIClient, isApiErrorResponse } from '@neynar/nodejs-sdk'
-import { CastParamType } from '@neynar/nodejs-sdk/build/api/models/cast-param-type'
+import { CastParamType } from '@neynar/nodejs-sdk/build/api/models/cast-param-type.js'
 import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api/models/cast-with-interactions'
 import { LRUCache } from 'lru-cache'
 
