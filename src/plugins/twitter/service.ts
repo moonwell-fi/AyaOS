@@ -1,7 +1,12 @@
 import { isNull } from '@/common/functions'
 import { ayaLogger } from '@/common/logger'
 import { TwitterManager } from '@/plugins/twitter/client'
-import { X_ACCESS_TOKEN, X_REFRESH_TOKEN } from '@/plugins/twitter/constants'
+import {
+  TWITTER_CLIENT_ID,
+  TWITTER_CLIENT_SECRET,
+  X_ACCESS_TOKEN,
+  X_REFRESH_TOKEN
+} from '@/plugins/twitter/constants'
 import { IAgentRuntime, Service, UUID } from '@elizaos/core'
 import { TwitterApi } from 'twitter-api-v2'
 
@@ -21,14 +26,18 @@ export class TwitterService extends Service {
 
     const accessToken = runtime.getSetting(X_ACCESS_TOKEN)
     const refreshToken = runtime.getSetting(X_REFRESH_TOKEN)
-    if (isNull(accessToken) || isNull(refreshToken)) {
-      throw new Error('Missing required Twitter access token or refresh token')
+    if (isNull(accessToken)) {
+      throw new Error('Missing required Twitter access token')
     }
 
     // Create Twitter client
     const client = new TwitterApi(accessToken)
 
-    manager = new TwitterManager(runtime, client, refreshToken)
+    const clientId = runtime.getSetting(TWITTER_CLIENT_ID)
+    const clientSecret = runtime.getSetting(TWITTER_CLIENT_SECRET)
+    const authClient = clientId ? new TwitterApi({ clientId, clientSecret }) : undefined
+
+    manager = new TwitterManager(runtime, client, refreshToken, authClient)
     service.managers.set(runtime.agentId, manager)
     await manager.start()
 

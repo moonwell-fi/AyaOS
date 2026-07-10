@@ -1,5 +1,7 @@
 # AyaOS Architecture Documentation
 
+> **Historical document:** This generated architecture description predates the removal of the AyaOS/Agentcoin hosted backend. The current runtime uses a local profile and local knowledge store; the API, authentication, remote knowledge sync, hosted wallet, and monitoring flows shown below no longer exist in the implementation.
+
 ## Documentation Index
 
 This documentation contains the following major sections:
@@ -818,7 +820,7 @@ sequenceDiagram
 ```mermaid
 classDiagram
     class AyaPlugin {
-        +name: "@tribesxyz/ayaos"
+        +name: "@moonwell-fi/ayaos"
         +description: string
         +actions: Action[]
         +providers: Provider[]

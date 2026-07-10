@@ -15,8 +15,6 @@ import { recentMessagesProvider } from '@/plugins/aya/providers/messages'
 import { providersProvider } from '@/plugins/aya/providers/providers'
 import { routerActionsProvider } from '@/plugins/aya/providers/router_actions'
 import { timeProvider } from '@/plugins/aya/providers/time'
-import { AyaClientService } from '@/plugins/aya/services/client'
-import { WebSearchService } from '@/plugins/aya/services/websearch'
 import {
   ActionEventPayload,
   EntityPayload,
@@ -159,8 +157,8 @@ const events = {
 }
 
 export const ayaPlugin: Plugin = {
-  name: '@tribesxyz/ayaos',
-  description: 'Aya plugin for interacting with the Aya network',
+  name: '@moonwell-fi/ayaos',
+  description: 'ElizaOS agent actions, providers, and event handlers',
   actions: [replyAction, ignoreAction, capabilitiesAction],
   evaluators: [],
   providers: [
@@ -180,5 +178,5 @@ export const ayaPlugin: Plugin = {
   // eslint-disable-next-line max-len
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any
   events: events as any,
-  services: [AyaClientService, WebSearchService]
+  services: []
 }

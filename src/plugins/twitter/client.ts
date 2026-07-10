@@ -1,4 +1,3 @@
-import { AGENTCOIN_FUN_API_URL } from '@/common/env'
 import { ayaLogger } from '@/common/logger'
 import { TWITTER_SOURCE } from '@/plugins/twitter/constants'
 import { IAgentRuntime } from '@elizaos/core'
@@ -17,27 +16,27 @@ export interface PostTweetResponse {
   text: string
 }
 
-const TokenRefreshResponseSchema = z.object({
-  accessToken: z.string(),
-  refreshToken: z.string()
-})
-
 export class TwitterManager {
   runtime: IAgentRuntime
   private client: TwitterApi
   private refreshToken_: string
 
-  constructor(runtime: IAgentRuntime, client: TwitterApi, refreshToken: string) {
+  constructor(
+    runtime: IAgentRuntime,
+    client: TwitterApi,
+    refreshToken?: string,
+    private readonly authClient?: TwitterApi
+  ) {
     this.runtime = runtime
     this.client = client
-    this.refreshToken_ = refreshToken
+    this.refreshToken_ = refreshToken || ''
   }
 
   async start(): Promise<void> {
     ayaLogger.info('Twitter client started')
 
     try {
-      await this.refreshToken()
+      await this.refreshTokenIfConfigured()
 
       // Verify credentials by getting user info
       const user = await this.client.v2.me()
@@ -50,30 +49,16 @@ export class TwitterManager {
     ayaLogger.info('✅ Twitter client started')
   }
 
-  private async refreshToken(): Promise<void> {
+  private async refreshTokenIfConfigured(): Promise<void> {
+    if (!this.authClient || !this.refreshToken_) {
+      return
+    }
+
     try {
       ayaLogger.info(`[${TWITTER_SOURCE}] Refreshing Twitter access token`)
-
-      const refreshUrl = `${AGENTCOIN_FUN_API_URL}/api/x/refresh`
-      const response = await fetch(refreshUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          refreshToken: this.refreshToken_
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`Token refresh failed: ${response.status} ${response.statusText}`)
-      }
-
-      const responseData = await response.json()
-      const { accessToken, refreshToken } = TokenRefreshResponseSchema.parse(responseData)
-
-      this.client = new TwitterApi(accessToken)
-      this.refreshToken_ = refreshToken
+      const { client, refreshToken } = await this.authClient.refreshOAuth2Token(this.refreshToken_)
+      this.client = client
+      this.refreshToken_ = refreshToken || this.refreshToken_
       ayaLogger.info(`[${TWITTER_SOURCE}] Token refreshed successfully`)
     } catch (error) {
       ayaLogger.error(`[${TWITTER_SOURCE}] Failed to refresh token:`, error)
@@ -86,7 +71,7 @@ export class TwitterManager {
       const validatedRequest = PostTweetRequestSchema.parse(request)
 
       // Refresh token before posting
-      await this.refreshToken()
+      await this.refreshTokenIfConfigured()
 
       ayaLogger.info(`[${TWITTER_SOURCE}] Posting tweet: ${validatedRequest.text}`)
 

@@ -1,10 +1,11 @@
 import { Character, UUID } from '@elizaos/core'
 
-export function createGenericCharacter(name: string, id: UUID): Character {
+export function createGenericCharacter(name: string, id: UUID, purpose?: string): Character {
   const character: Character = {
     id,
     name,
     bio: [
+      ...(purpose ? [purpose] : []),
       'A friendly and helpful companion who enjoys conversation and providing support.',
       'Always eager to chat and engage in meaningful discussions.',
       'A digital friend who is here to listen and offer a different perspective.'

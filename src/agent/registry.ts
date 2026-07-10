@@ -1,23 +1,15 @@
-import RateLimiter from '@/agent/ratelimiter'
 import { isNull } from '@/common/functions'
 import { ayaLogger } from '@/common/logger'
-import { AuthInfo, AyaOSOptions } from '@/common/types'
-import { LoginManager } from '@/managers/admin'
-import { ConfigManager } from '@/managers/config'
-import { EventManager } from '@/managers/event'
-import { KeychainManager } from '@/managers/keychain'
+import { AyaOSOptions } from '@/common/types'
 import { PathManager } from '@/managers/path'
+import { ProfileManager } from '@/managers/profile'
 
 export interface AgentContext {
-  auth: AuthInfo
   dataDir: string
-  rateLimiter?: RateLimiter
+  rateLimiter: AyaOSOptions['rateLimiter']
   managers: {
-    event: EventManager
-    config: ConfigManager
-    keychain: KeychainManager
-    login: LoginManager
     path: PathManager
+    profile: ProfileManager
   }
 }
 
@@ -36,25 +28,12 @@ export const AgentRegistry = {
       throw new Error('Agent already registered: ' + dataDir)
     }
 
-    const keychain = new KeychainManager(pathResolver.keypairFile)
-    const loginManager = new LoginManager(keychain, pathResolver)
-    const authInfo = await loginManager.provisionIfNeeded()
-
-    // eagerly setup managers and start event manager
-    const eventManager = new EventManager(authInfo.token)
-    const configManager = new ConfigManager(eventManager, pathResolver)
-    void eventManager.start()
-
     const context: AgentContext = {
-      auth: authInfo,
       dataDir,
       rateLimiter: options?.rateLimiter,
       managers: {
-        event: eventManager,
-        config: configManager,
-        keychain,
-        login: loginManager,
-        path: pathResolver
+        path: pathResolver,
+        profile: new ProfileManager(pathResolver)
       }
     }
 
@@ -77,8 +56,6 @@ export const AgentRegistry = {
       return
     }
 
-    await context.managers.event.stop()
-    await context.managers.config.stop()
     this.instances.delete(dataDir)
   },
 

@@ -1,30 +1,9 @@
 import { IAyaAgent } from '@/agent/iagent'
 import { AgentContext, AgentRegistry } from '@/agent/registry'
-import {
-  AYA_AGENT_DATA_DIR_KEY,
-  AYA_AGENT_IDENTITY_KEY,
-  AYA_JWT_SETTINGS_KEY,
-  CHARACTERS_DIR,
-  DEFAULT_EMBEDDING_DIMENSIONS,
-  DEFAULT_EMBEDDING_MODEL,
-  DEFAULT_LARGE_MODEL,
-  DEFAULT_SMALL_MODEL,
-  LLM_PROXY,
-  OPENAI_API_KEY,
-  OPENAI_BASE_URL,
-  PGLITE_DATA_DIR,
-  WEBSEARCH_PROXY
-} from '@/common/constants'
-import { AGENTCOIN_FUN_API_URL } from '@/common/env'
-import {
-  ensureRuntimeService,
-  ensureUUID,
-  isNull,
-  isRequiredString,
-  loadEnvFile
-} from '@/common/functions'
+import { AYA_AGENT_DATA_DIR_KEY, PGLITE_DATA_DIR } from '@/common/constants'
+import { ensureRuntimeService, isNull, loadEnvFile } from '@/common/functions'
 import { ayaLogger } from '@/common/logger'
-import { AuthInfo, AyaOSOptions, CharacterSchema } from '@/common/types'
+import { AyaOSOptions } from '@/common/types'
 import { FarcasterManager } from '@/managers/farcaster'
 import {
   IFarcasterManager,
@@ -36,6 +15,7 @@ import { TelegramManager } from '@/managers/telegram'
 import { TwitterManager } from '@/managers/twitter'
 import { XmtpManager } from '@/managers/xmtp'
 import { ayaPlugin } from '@/plugins/aya'
+import { WebSearchService } from '@/plugins/aya/services/websearch'
 import farcasterPlugin from '@/plugins/farcaster'
 import { FarcasterService } from '@/plugins/farcaster/service'
 import openaiPlugin from '@/plugins/openai'
@@ -199,17 +179,16 @@ export class Agent implements IAyaAgent {
     let runtime: AgentRuntime | undefined
 
     try {
-      ayaLogger.log('Starting agent...', AGENTCOIN_FUN_API_URL)
+      ayaLogger.log('Starting agent...')
 
-      // step 1: provision the hardware if needed.
+      // step 1: initialize local agent state.
       const context = await AgentRegistry.setup(this.options)
       this.context_ = context
-      const { auth, managers } = context
 
       const envSettings = this.processSettings()
 
       // step 2: load character and initialize database
-      this.character_ = await this.setupCharacter(auth, envSettings)
+      this.character_ = this.setupCharacter(envSettings)
 
       // step 3: initialize required plugins
       this.plugins.push(sqlPlugin)
@@ -257,8 +236,6 @@ export class Agent implements IAyaAgent {
         }
       }
 
-      managers.config.setShutdownFunc(shutdown)
-
       process.once('SIGINT', () => {
         void shutdown('SIGINT')
       })
@@ -289,6 +266,10 @@ export class Agent implements IAyaAgent {
         await hackRegisterService(service, this.runtime)
       }
 
+      if (this.runtime.getSetting('TAVILY_API_KEY')) {
+        await hackRegisterService(WebSearchService, this.runtime)
+      }
+
       await hackRegisterPlugin(ayaPlugin, this.runtime)
       await hackRegisterPlugin(farcasterPlugin, this.runtime)
 
@@ -311,14 +292,6 @@ export class Agent implements IAyaAgent {
         await hackRegisterPlugin(twitterPlugin, this.runtime)
       }
 
-      // start the managers
-      const AGENTCOIN_MONITORING_ENABLED = this.runtime.getSetting('AGENTCOIN_MONITORING_ENABLED')
-
-      if (AGENTCOIN_MONITORING_ENABLED) {
-        ayaLogger.log('Agentcoin monitoring enabled')
-        await managers.config.start()
-      }
-
       ayaLogger.log(`Started ${this.runtime.character.name} as ${this.runtime.agentId}`)
     } catch (error: unknown) {
       ayaLogger.log('sdk error', error)
@@ -336,20 +309,7 @@ export class Agent implements IAyaAgent {
       name: runtime.character.name
     })
 
-    const agentUrl = `${AGENTCOIN_FUN_API_URL}/agent/${this.context.auth.identity}`
-    // Calculate box width based on URL length
-    const boxWidth = Math.max(70, agentUrl.length + 6)
-
-    // Print a fancy bordered URL message
-    ayaLogger.log('┌' + '─'.repeat(boxWidth) + '┐')
-    ayaLogger.log('│' + ' '.repeat(boxWidth) + '│')
-    ayaLogger.log('│' + '  🚀 Your agent is ready!  '.padEnd(boxWidth, ' ') + '│')
-    ayaLogger.log('│' + ' '.repeat(boxWidth) + '│')
-    ayaLogger.log('│' + '  Visit your agent at:'.padEnd(boxWidth, ' ') + '│')
-    ayaLogger.log('│' + ' '.repeat(boxWidth) + '│')
-    ayaLogger.log('│' + `  ${agentUrl}`.padEnd(boxWidth, ' ') + '│')
-    ayaLogger.log('│' + ' '.repeat(boxWidth) + '│')
-    ayaLogger.log('└' + '─'.repeat(boxWidth) + '┘\n')
+    ayaLogger.log('🚀 Your agent is ready!')
   }
 
   async register(kind: 'service', handler: typeof Service): Promise<void>
@@ -395,53 +355,19 @@ export class Agent implements IAyaAgent {
     }
   }
 
-  private async setupCharacter(
-    authInfo: AuthInfo,
-    envSettings: Record<string, string>
-  ): Promise<Character> {
+  private setupCharacter(envSettings: Record<string, string>): Character {
     ayaLogger.log('Loading character...')
-    const { identity, token } = authInfo
-
-    const characterId = ensureUUID(identity.substring(6))
-    const characterFile = path.join(CHARACTERS_DIR, `${characterId}.character.json`)
-
-    const charString = await fs.promises.readFile(characterFile, 'utf8')
-    const character = CharacterSchema.parse(JSON.parse(charString))
+    const character = this.context.managers.profile.loadOrCreate(
+      this.options?.character,
+      this.options?.name || envSettings.AGENT_NAME,
+      this.options?.purpose || envSettings.AGENT_PURPOSE
+    )
     if (isNull(character.id)) {
       throw new Error('Character id not found')
     }
 
     character.secrets = character.secrets || {}
-
-    // setup ayaos token
-    character.secrets[AYA_JWT_SETTINGS_KEY] = token
-    character.secrets[AYA_AGENT_IDENTITY_KEY] = identity
     character.secrets[AYA_AGENT_DATA_DIR_KEY] = this.context.dataDir
-
-    // setup websearch
-    if (isNull(character.secrets.TAVILY_API_URL)) {
-      character.secrets.TAVILY_API_URL = WEBSEARCH_PROXY
-    }
-    if (character.secrets.TAVILY_API_URL === WEBSEARCH_PROXY) {
-      character.secrets.TAVILY_API_KEY = token
-    }
-
-    const openaiApiKey = this.getConfigValue(character, envSettings, OPENAI_API_KEY)
-
-    // setup llm
-    if (isNull(openaiApiKey) || openaiApiKey.trim() === '') {
-      character.secrets.OPENAI_BASE_URL = LLM_PROXY
-      character.secrets.OPENAI_SMALL_MODEL = DEFAULT_SMALL_MODEL
-      character.secrets.OPENAI_LARGE_MODEL = DEFAULT_LARGE_MODEL
-      character.secrets.OPENAI_EMBEDDING_MODEL = DEFAULT_EMBEDDING_MODEL
-      character.secrets.OPENAI_EMBEDDING_DIMENSIONS = DEFAULT_EMBEDDING_DIMENSIONS
-    }
-
-    const openaiBaseUrl = this.getConfigValue(character, envSettings, OPENAI_BASE_URL)
-
-    if (openaiBaseUrl === LLM_PROXY) {
-      character.secrets.OPENAI_API_KEY = token
-    }
 
     const isPgliteDataDirSet = !isNull(this.getConfigValue(character, envSettings, PGLITE_DATA_DIR))
 
@@ -473,16 +399,6 @@ export class Agent implements IAyaAgent {
     const env = fs.existsSync(this.context.managers.path.envFile)
       ? loadEnvFile(this.context.managers.path.envFile)
       : loadEnvFile(path.join(process.cwd(), '.env'))
-
-    Object.entries(env).forEach(([key, value]) => {
-      if (key.startsWith('AGENTCOIN_ENC_') && isRequiredString(value)) {
-        const decryptedValue = this.context.managers.keychain.decrypt(value)
-        const newKey = key.substring(14)
-        ayaLogger.log('Decrypted secret:', newKey)
-        env[newKey] = decryptedValue
-        delete env[key]
-      }
-    })
 
     return env
   }

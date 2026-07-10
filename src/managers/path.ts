@@ -5,6 +5,7 @@ import * as path from 'path'
 export class PathManager {
   public readonly dataDir: string
   public readonly envFile: string
+  public readonly characterFile: string
   public readonly provisionFile: string
   public readonly registrationFile: string
   public readonly keypairFile: string
@@ -21,6 +22,7 @@ export class PathManager {
 
     this.dataDir = rootDir ?? path.join(os.homedir(), '.ayaos')
     this.envFile = path.join(this.dataDir, '.env')
+    this.characterFile = path.join(this.dataDir, 'character.json')
     this.provisionFile = path.join(this.dataDir, 'provision.json')
     this.registrationFile = path.join(this.dataDir, 'registration.json')
     this.keypairFile = path.join(this.dataDir, 'agent-keypair.json')

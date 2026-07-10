@@ -1,89 +1,90 @@
-import { AgentRegistry } from '@/agent/registry'
-import { AyaAuthAPI } from '@/apis/aya-auth'
-import {
-  AYA_AGENT_DATA_DIR_KEY,
-  AYA_AGENT_IDENTITY_KEY,
-  AYA_JWT_SETTINGS_KEY
-} from '@/common/constants'
-import { ensureStringSetting, isNull } from '@/common/functions'
-import { AgentIdentitySchema, AgentWallet, AgentWalletKind, Identity } from '@/common/types'
+import { isNull } from '@/common/functions'
+import { AgentWallet, AgentWalletKind, HexStringSchema } from '@/common/types'
 import { IWalletService } from '@/services/interfaces'
 import { IAgentRuntime, Service, UUID } from '@elizaos/core'
-import { TurnkeyClient } from '@turnkey/http'
-import { createAccountWithAddress } from '@turnkey/viem'
 import { Account, getAddress } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+
+const LOCAL_WALLET_KEYS = [
+  'EVM_WALLET_PRIVATE_KEY',
+  'WALLET_PRIVATE_KEY',
+  'XMTP_WALLET_PRIVATE_KEY'
+]
 
 export class WalletService extends Service implements IWalletService {
   static readonly instances = new Map<UUID, WalletService>()
-  private readonly turnkey: TurnkeyClient
 
   static readonly serviceType = 'aya-os-wallet-service'
-  readonly capabilityDescription = ''
-  private readonly authAPI: AyaAuthAPI
-  private readonly identity: Identity
+  readonly capabilityDescription = 'Local EVM wallet signing'
 
-  constructor(readonly runtime: IAgentRuntime) {
-    super(runtime)
-    const token = ensureStringSetting(runtime, AYA_JWT_SETTINGS_KEY)
-    const identity = ensureStringSetting(runtime, AYA_AGENT_IDENTITY_KEY)
-    const dataDir = ensureStringSetting(runtime, AYA_AGENT_DATA_DIR_KEY)
-    this.authAPI = new AyaAuthAPI(token)
-    this.identity = AgentIdentitySchema.parse(identity)
-    const { managers } = AgentRegistry.get(dataDir)
-
-    this.turnkey = new TurnkeyClient(
-      {
-        baseUrl: 'https://api.turnkey.com'
-      },
-      managers.keychain.turnkeyApiKeyStamper
-    )
-  }
-
-  static async start(_runtime: IAgentRuntime): Promise<Service> {
-    let instance = WalletService.instances.get(_runtime.agentId)
+  static async start(runtime: IAgentRuntime): Promise<Service> {
+    let instance = WalletService.instances.get(runtime.agentId)
     if (instance) {
       return instance
     }
-    instance = new WalletService(_runtime)
-    WalletService.instances.set(_runtime.agentId, instance)
+    instance = new WalletService(runtime)
+    WalletService.instances.set(runtime.agentId, instance)
     return instance
   }
 
-  static async stop(_runtime: IAgentRuntime): Promise<unknown> {
-    const instance = WalletService.instances.get(_runtime.agentId)
+  static async stop(runtime: IAgentRuntime): Promise<unknown> {
+    const instance = WalletService.instances.get(runtime.agentId)
     if (isNull(instance)) {
       return undefined
     }
-    await instance.stop()
+    WalletService.instances.delete(runtime.agentId)
     return instance
   }
 
   async stop(): Promise<void> {
-    // nothing to do
+    // Nothing to close for a local wallet.
   }
 
   async getDefaultWallet(kind: AgentWalletKind): Promise<AgentWallet | undefined> {
-    const wallet = await this.authAPI.getDefaultWallet(this.identity, kind)
+    if (kind !== 'evm') {
+      return undefined
+    }
 
-    return wallet
+    const account = this.getConfiguredAccount()
+    if (!account) {
+      return undefined
+    }
+
+    return {
+      id: 0,
+      address: account.address,
+      kind: 'evm',
+      label: 'Local wallet',
+      subOrganizationId: 'local',
+      createdAt: new Date(0)
+    }
   }
 
   async signPersonalMessage(wallet: AgentWallet, message: string): Promise<string> {
     const account = this.getAccount(wallet)
     if (isNull(account.signMessage)) {
-      throw new Error('Failed to sign message. missing signMessage function')
+      throw new Error('Configured wallet cannot sign messages')
     }
     return account.signMessage({ message })
   }
 
   getAccount(wallet: AgentWallet): Account {
-    const address = getAddress(wallet.address)
-    const account = createAccountWithAddress({
-      client: this.turnkey,
-      organizationId: wallet.subOrganizationId,
-      signWith: address,
-      ethereumAddress: address
-    })
+    if (wallet.kind !== 'evm') {
+      throw new Error('Only local EVM wallets are supported')
+    }
+
+    const account = this.getConfiguredAccount()
+    if (!account || getAddress(account.address) !== getAddress(wallet.address)) {
+      throw new Error('No private key is configured for this wallet')
+    }
     return account
+  }
+
+  private getConfiguredAccount(): Account | undefined {
+    const privateKey = LOCAL_WALLET_KEYS.map((key) => this.runtime.getSetting(key)).find(Boolean)
+    if (!privateKey) {
+      return undefined
+    }
+    return privateKeyToAccount(HexStringSchema.parse(privateKey))
   }
 }

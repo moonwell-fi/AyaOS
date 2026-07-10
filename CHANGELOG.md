@@ -1,4 +1,4 @@
-# @tribesxyz/ayaos
+# @moonwell-fi/ayaos
 
 ## 0.2.8
 

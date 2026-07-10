@@ -1,7 +1,6 @@
 import { isNull } from '@/common/functions'
-import { LoginManager } from '@/managers/admin'
-import { KeychainManager } from '@/managers/keychain'
 import { PathManager } from '@/managers/path'
+import { ProfileManager } from '@/managers/profile'
 
 async function main(): Promise<void> {
   try {
@@ -18,21 +17,15 @@ async function main(): Promise<void> {
     // initialize path resolver with data directory
     const pathResolver = new PathManager(dataDir)
 
-    // initialize keychain service
-    const keychainManager = new KeychainManager(pathResolver.keypairFile)
+    const profileManager = new ProfileManager(pathResolver)
+    profileManager.loadOrCreate(undefined, agentName, agentPurpose)
 
-    // initialize agentcoin service
-    const agentcoinService = new LoginManager(keychainManager, pathResolver)
-
-    // provision if needed
-    await agentcoinService.provisionIfNeeded(agentName, agentPurpose)
-
-    console.log('agent provisioning completed successfully')
+    console.log('local agent profile created successfully')
   } catch (error) {
     if (error instanceof Error) {
-      console.error('failed to provision agent:', error)
+      console.error('failed to create local agent profile:', error)
     } else {
-      console.error('failed to provision agent:', error)
+      console.error('failed to create local agent profile:', error)
     }
     process.exit(1)
   }

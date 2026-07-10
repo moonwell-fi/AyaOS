@@ -475,6 +475,9 @@ export type EmbeddingsConfig = z.infer<typeof EmbeddingsConfigSchema>
 export interface AyaOSOptions {
   dataDir?: string
   rateLimiter?: RateLimiter
+  character?: Character
+  name?: string
+  purpose?: string
 }
 
 export const RagKnowledgeItemContentSchema = z.object({
